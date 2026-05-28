@@ -218,8 +218,8 @@ function ProfessionTracker:UpdateProfessionsList(container)
     local isDMF = self:IsDMFActive()
     
     -- Define relative weights for each column based on expected content length
-    local baseHeaders = {"Name", "Realm", "Profession", "Moxie", "Skill", "Tool", "Acc.", "Knowledge", "Treatise", "Treasures", "Weekly", "Gathering", "Concentration", "DMF"}
-    local baseWeights = {1.0, 0.9, 1.0, 0.5, 0.6, 0.5, 0.5, 1.1, 0.7, 0.7, 0.6, 0.6, 1.0, 0.6}
+    local baseHeaders = {"Name", "Realm", "Profession", "Expansion", "Moxie", "Skill", "Tool", "Acc.", "Knowledge", "Treatise", "Treasures", "Weekly", "Gathering", "Concentration", "DMF"}
+    local baseWeights = {1.0, 0.9, 1.0, 0.8, 0.5, 0.6, 0.5, 0.5, 1.1, 0.7, 0.7, 0.6, 0.6, 1.0, 0.6}
 
     local headers, weights = {}, {}
     local totalWeight = 0
@@ -244,31 +244,24 @@ function ProfessionTracker:UpdateProfessionsList(container)
     for charKey, data in pairs(self.db.profile.characters) do
         if not self.db.profile.hiddenCharacters.professions[charKey] then
             local charHasProf = false
-            for i = 1, 2 do
-                local p = "p" .. i
-                if data[p.."Name"] and data[p.."Name"] ~= "None" then
-                    table.insert(sortedProfs, {
-                        key = charKey, data = data, profName = data[p.."Name"],
-                        rank = data[p.."Rank"] or 0, max = data[p.."Max"] or 0,
-                        moxie = data[p.."Moxie"] or 0, spent = data[p.."Spent"] or 0,
-                        unspent = data[p.."Unspent"] or 0, total = data[p.."Total"] or 0,
-                        maxK = data[p.."MaxK"] or 0, treatise = data[p.."Treatise"],
-                        hasTreatise = data[p.."HasTreatise"], treatiseName = data[p.."TreatiseName"],
-                        treasures = data[p.."Treasures"] or 0, treasureDetails = data[p.."TreasureDetails"],
-                        maxTreasures = data[p.."MaxTreasures"] or 0, concentration = data[p.."Conc"] or 0,
-                        dmf = data[p.."Dmf"], hasDmf = data[p.."HasDmf"],
-                        lastUpdate = data.lastUpdate, tool = data[p.."Tool"] or 0,
-                        acc = data[p.."Acc"] or 0, toolName = data[p.."ToolName"],
-                        accNames = data[p.."AccNames"], weekly = data[p.."Weekly"],
-                        hasWeekly = data[p.."HasWeekly"], weeklyName = data[p.."WeeklyName"],
-                        gathering = data[p.."Gathering"] or 0, maxGathering = data[p.."MaxGathering"] or 0,
-                        gatheringDetails = data[p.."GatheringDetails"]
-                    })
-                    charHasProf = true
+            if data.professions then -- Check for the new 'professions' table
+                for pName, expDataList in pairs(data.professions) do
+                    for expKey, expData in pairs(expDataList) do
+                        -- Only add if this expansion is active in settings
+                        if self.db.profile.activeExpansions[expKey] then
+                            table.insert(sortedProfs, {
+                                key = charKey,
+                                data = data, -- Base character data
+                                profName = pName,
+                                expansionKey = expKey, -- Store expansion key
+                                expansionName = ProfessionTracker.Expansions[expKey], -- Store display name
+                                expData = expData, -- The actual profession data for this expansion
+                                lastUpdate = data.lastUpdate -- Last update from characterData
+                            })
+                            charHasProf = true
+                        end
+                    end
                 end
-            end
-            if not charHasProf then
-                table.insert(sortedProfs, { key = charKey, data = data, profName = "None", rank = 0, max = 0, moxie = 0, spent = 0, unspent = 0, total = 0, maxK = 0, treatise = false, hasTreatise = false, weekly = false, hasWeekly = false, treasures = 0, maxTreasures = 0, gathering = 0, maxGathering = 0, lastUpdate = data.lastUpdate })
             end
         end
     end
@@ -277,6 +270,7 @@ function ProfessionTracker:UpdateProfessionsList(container)
         ["Name"] = "name",
         ["Realm"] = "realm",
         ["Profession"] = "profName",
+        ["Expansion"] = "expansionName", -- New sortable column
         ["Moxie"] = "moxie",
         ["Skill"] = "rank",
         ["Tool"] = "tool",
@@ -289,11 +283,18 @@ function ProfessionTracker:UpdateProfessionsList(container)
         ["Concentration"] = "concentration",
         ["DMF"] = "dmf"
     }
+    
+    -- Helper to get the actual value for sorting, considering the new nested structure
+    local function getSortValue(entry, field)
+        if field == "name" or field == "realm" then return entry.data[field] end
+        if field == "profName" or field == "expansionName" then return entry[field] end
+        return entry.expData[field]
+    end
 
     table.sort(sortedProfs, function(a, b)
-        local field = sortMap[sortCol] or "name"
-        local valA = (field == "name" or field == "realm") and a.data[field] or a[field]
-        local valB = (field == "name" or field == "realm") and b.data[field] or b[field]
+        local field = sortMap[sortCol] or "name" -- Default sort by Name
+        local valA = getSortValue(a, field)
+        local valB = getSortValue(b, field)
         valA = valA or ""
         valB = valB or ""
 
@@ -301,7 +302,10 @@ function ProfessionTracker:UpdateProfessionsList(container)
             if field ~= "name" and a.data.name ~= b.data.name then
                 return a.data.name < b.data.name
             end
-            return a.profName < b.profName
+            if field ~= "profName" and a.profName ~= b.profName then
+                return a.profName < b.profName
+            end
+            return a.expansionName < b.expansionName -- Secondary sort by expansion
         end
 
         if sortOrder == "asc" then
@@ -350,17 +354,22 @@ function ProfessionTracker:UpdateProfessionsList(container)
     for rowIdx, entry in ipairs(sortedProfs) do
         local data = entry.data
         local charKey = entry.key
+        local expData = entry.expData -- The expansion-specific data
 
         local row = AceGUI:Create("SimpleGroup")
         row:SetLayout("Flow")
         row:SetFullWidth(true)
         scroll:AddChild(row)
 
+        -- Handle empty profession slots (e.g., if a character only has one profession)
+        if entry.profName == "None" then
+            row:SetAlpha(0.5) -- Dim out empty rows
+        end
+
         if not row.bg then
             row.bg = row.frame:CreateTexture(nil, "BACKGROUND")
             row.bg:SetAllPoints()
         end
-
         if rowIdx % 2 == 0 then
             row.bg:SetColorTexture(1, 1, 1, 0.05)
             row.bg:Show()
@@ -381,37 +390,47 @@ function ProfessionTracker:UpdateProfessionsList(container)
         local profConfig = self.ProfessionData[entry.profName]
         if not self.db.profile.hiddenColumnsProf["Profession"] then
             local profDisplayName = entry.profName
-            if profConfig and profConfig.color then
-                local r, g, b = unpack(profConfig.color)
+            if profConfig and profConfig[entry.expansionKey] and profConfig[entry.expansionKey].color then
+                local r, g, b = unpack(profConfig[entry.expansionKey].color)
                 profDisplayName = string.format("|cff%02x%02x%02x%s|r", r*255, g*255, b*255, entry.profName)
             end
             self:AddCol(row, profDisplayName, colWidths["Profession"])
         end
 
+        -- Expansion
+        if not self.db.profile.hiddenColumnsProf["Expansion"] then
+            self:AddCol(row, entry.expansionName or "N/A", colWidths["Expansion"], "CENTER")
+        end
+
         -- Moxie (Artisan's Acuity/Mettle)
         if not self.db.profile.hiddenColumnsProf["Moxie"] then
-            local moxieText = self:GetColorText(entry.moxie or 0, 600)
+            local moxieText = self:GetColorText(expData.moxie or 0, 600)
             self:AddCol(row, moxieText, colWidths["Moxie"], "CENTER")
         end
 
         -- Skill (Combined current/max)
         if not self.db.profile.hiddenColumnsProf["Skill"] then
-            local skillText = self:GetColorText(entry.rank, entry.max, "/" .. entry.max)
+            local skillText = self:GetColorText(expData.rank, expData.max, "/" .. (expData.max or 0))
             self:AddCol(row, skillText, colWidths["Skill"], "CENTER")
         end
 
         -- Tool (unchanged)
         if not self.db.profile.hiddenColumnsProf["Tool"] then
             local toolText = "-"
-            if profConfig and profConfig.epicTool then
-                toolText = self:GetColorText(entry.tool, 1, "/1")
+            local currentExpProfConfig = profConfig and profConfig[entry.expansionKey]
+            if currentExpProfConfig and currentExpProfConfig.epicTool then
+                local toolName = currentExpProfConfig.epicTool.name
+                local isEquipped = (expData.tool == 1)
+                toolText = self:GetColorText(expData.tool, 1, "/1")
                 local lbl = self:AddCol(row, toolText, colWidths["Tool"], "CENTER")
-                if entry.toolName and entry.toolName ~= "" then
+                -- Tooltip always shows the tool, indicating if equipped
+                if toolName and toolName ~= "" then
                     lbl.frame:SetScript("OnEnter", function(frame)
                         GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
-                        GameTooltip:SetText("|cffffd100Equipped Tool|r")
+                        GameTooltip:SetText("|cffffd100Profession Tool|r")
                         GameTooltip:AddLine(" ")
-                        GameTooltip:AddLine("|cffa335ee" .. entry.toolName .. "|r")
+                        local status = isEquipped and "|cff00ff00[Equipped]|r" or "|cffff8080[Not Equipped]|r"
+                        GameTooltip:AddLine(string.format("%s %s", status, "|cffa335ee" .. toolName .. "|r"))
                         GameTooltip:Show()
                     end)
                     lbl.frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -424,15 +443,27 @@ function ProfessionTracker:UpdateProfessionsList(container)
         -- Accessories (unchanged)
         if not self.db.profile.hiddenColumnsProf["Acc."] then
             local accText = "-"
-            if profConfig and profConfig.epicAccessories and #profConfig.epicAccessories > 0 then
-                accText = self:GetColorText(entry.acc, 2, "/2")
+            local currentExpProfConfig = profConfig and profConfig[entry.expansionKey]
+            if currentExpProfConfig and currentExpProfConfig.epicAccessories and #currentExpProfConfig.epicAccessories > 0 then
+                local maxAcc = #currentExpProfConfig.epicAccessories
+                accText = self:GetColorText(expData.acc, maxAcc, "/" .. maxAcc)
                 local lbl = self:AddCol(row, accText, colWidths["Acc."], "CENTER")
-                if entry.accNames and entry.accNames ~= "" then
+                -- Tooltip always shows all accessories, indicating if equipped
+                -- We now check against expData.equippedAccIDs
+                if currentExpProfConfig.epicAccessories then
                     lbl.frame:SetScript("OnEnter", function(frame)
                         GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
-                        GameTooltip:SetText("|cffffd100Equipped Accessories|r")
+                        GameTooltip:SetText("|cffffd100Profession Accessories|r")
                         GameTooltip:AddLine(" ")
-                        GameTooltip:AddLine("|cffa335ee" .. entry.accNames .. "|r")
+                        local equippedAccIDsMap = {}
+                        for _, id in ipairs(expData.equippedAccIDs or {}) do
+                            equippedAccIDsMap[id] = true
+                        end
+                        for _, accDef in ipairs(currentExpProfConfig.epicAccessories) do
+                            local isEquipped = equippedAccIDsMap[accDef.id]
+                            local status = isEquipped and "|cff00ff00[Equipped]|r" or "|cffff8080[Not Equipped]|r"
+                            GameTooltip:AddLine(string.format("%s %s", status, "|cffa335ee" .. accDef.name .. "|r"))
+                        end
                         GameTooltip:Show()
                     end)
                     lbl.frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -444,7 +475,7 @@ function ProfessionTracker:UpdateProfessionsList(container)
 
         -- Knowledge (Spent (Unspent Available) / Capacity)
         if not self.db.profile.hiddenColumnsProf["Knowledge"] then
-            local spent, unspent, capacity = tonumber(entry.spent) or 0, tonumber(entry.unspent) or 0, tonumber(entry.maxK) or 0
+            local spent, unspent, capacity = tonumber(expData.spent) or 0, tonumber(expData.unspent) or 0, tonumber(expData.maxK) or 0
             local baseColor = "" 
             if spent == 0 then
                 baseColor = "|cff808080" 
@@ -462,16 +493,16 @@ function ProfessionTracker:UpdateProfessionsList(container)
         -- Treatise
         if not self.db.profile.hiddenColumnsProf["Treatise"] then
             local treatiseText = "-"
-            if entry.hasTreatise then
-                local val = entry.treatise and 1 or 0
+            if expData.hasTreatise then
+                local val = expData.treatise and 1 or 0
                 treatiseText = self:GetColorText(val, 1, "/1")
                 local lbl = self:AddCol(row, treatiseText, colWidths["Treatise"], "CENTER")
-                if entry.treatiseName and entry.treatiseName ~= "" then
+                if expData.treatiseName and expData.treatiseName ~= "" then
                     lbl.frame:SetScript("OnEnter", function(frame)
                         GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
                         GameTooltip:SetText("|cffffd100Weekly Treatise|r")
                         GameTooltip:AddLine(" ")
-                        GameTooltip:AddLine("|cffa335ee" .. entry.treatiseName .. "|r")
+                        GameTooltip:AddLine("|cffa335ee" .. expData.treatiseName .. "|r")
                         GameTooltip:Show()
                     end)
                     lbl.frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -484,15 +515,15 @@ function ProfessionTracker:UpdateProfessionsList(container)
         -- Treasures
         if not self.db.profile.hiddenColumnsProf["Treasures"] then
             local treasureText = "-"
-            if entry.maxTreasures > 0 then
-                treasureText = self:GetColorText(entry.treasures, entry.maxTreasures, "/" .. entry.maxTreasures)
+            if expData.maxTreasures > 0 then
+                treasureText = self:GetColorText(expData.treasures, expData.maxTreasures, "/" .. expData.maxTreasures)
                 local lbl = self:AddCol(row, treasureText, colWidths["Treasures"], "CENTER")
-                if entry.treasureDetails and entry.treasureDetails ~= "" then
+                if expData.treasureDetails and expData.treasureDetails ~= "" then
                     lbl.frame:SetScript("OnEnter", function(frame)
                         GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
                         GameTooltip:SetText("|cffffd100Profession Treasures|r")
                         GameTooltip:AddLine(" ")
-                        GameTooltip:AddLine(entry.treasureDetails)
+                        GameTooltip:AddLine(expData.treasureDetails)
                         GameTooltip:Show()
                     end)
                     lbl.frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -505,16 +536,16 @@ function ProfessionTracker:UpdateProfessionsList(container)
         -- Weekly Quest
         if not self.db.profile.hiddenColumnsProf["Weekly"] then
             local weeklyText = "-"
-            if entry.hasWeekly then
-                local val = entry.weekly and 1 or 0
+            if expData.hasWeekly then
+                local val = expData.weekly and 1 or 0
                 weeklyText = self:GetColorText(val, 1, "/1")
                 local lbl = self:AddCol(row, weeklyText, colWidths["Weekly"], "CENTER")
-                if entry.weeklyName and entry.weeklyName ~= "" then
+                if expData.weeklyName and expData.weeklyName ~= "" then
                     lbl.frame:SetScript("OnEnter", function(frame)
                         GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
                         GameTooltip:SetText("|cffffd100Weekly Profession Quest|r")
                         GameTooltip:AddLine(" ")
-                        GameTooltip:AddLine("|cffa335ee" .. entry.weeklyName .. "|r")
+                        GameTooltip:AddLine("|cffa335ee" .. expData.weeklyName .. "|r")
                         GameTooltip:Show()
                     end)
                     lbl.frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -527,15 +558,15 @@ function ProfessionTracker:UpdateProfessionsList(container)
         -- Gathering Progress
         if not self.db.profile.hiddenColumnsProf["Gathering"] then
             local gatheringText = ""
-            if entry.maxGathering > 0 then
-                gatheringText = self:GetColorText(entry.gathering, entry.maxGathering, "/" .. entry.maxGathering)
+            if expData.maxGathering > 0 then
+                gatheringText = self:GetColorText(expData.gathering, expData.maxGathering, "/" .. expData.maxGathering)
                 local lbl = self:AddCol(row, gatheringText, colWidths["Gathering"], "CENTER")
-                if entry.gatheringDetails and entry.gatheringDetails ~= "" then
+                if expData.gatheringDetails and expData.gatheringDetails ~= "" then
                     lbl.frame:SetScript("OnEnter", function(frame)
                         GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
                         GameTooltip:SetText("|cffffd100Weekly Gathering Progress|r")
                         GameTooltip:AddLine(" ")
-                        GameTooltip:AddLine(entry.gatheringDetails)
+                        GameTooltip:AddLine(expData.gatheringDetails)
                         GameTooltip:Show()
                     end)
                     lbl.frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -547,11 +578,13 @@ function ProfessionTracker:UpdateProfessionsList(container)
 
         -- Concentration (with live estimation and tooltip)
         if not self.db.profile.hiddenColumnsProf["Concentration"] then
-            if profConfig and profConfig.concentration and profConfig.concentration.currencyId > 0 then
+            -- Access concentration from expansion-specific config
+            local currentExpProfConfig = profConfig and profConfig[entry.expansionKey]
+            if currentExpProfConfig and currentExpProfConfig.concentration and currentExpProfConfig.concentration.currencyId > 0 then
                 local currentTime = time()
                 local elapsed = currentTime - (entry.lastUpdate or currentTime)
                 local recharged = math.floor(elapsed / 360) 
-                local estimated = math.min(1000, entry.concentration + recharged)
+                local estimated = math.min(1000, (expData.concentration or 0) + recharged)
                 local concText = self:GetColorText(estimated, 900, "/1000")
                 local lbl = self:AddCol(row, concText, colWidths["Concentration"], "CENTER")
                 lbl.frame:SetScript("OnEnter", function(frame)
@@ -565,8 +598,8 @@ function ProfessionTracker:UpdateProfessionsList(container)
                     end
                     GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
                     GameTooltip:SetText("Concentration Details", 1, 1, 1)
-                    GameTooltip:AddLine(" ")
-                    GameTooltip:AddDoubleLine("Saved:", entry.concentration, 1, 1, 1, 1, 1, 1)
+                    GameTooltip:AddLine(" ") -- Add a blank line for spacing
+                    GameTooltip:AddDoubleLine("Saved:", expData.concentration, 1, 1, 1, 1, 1, 1)
                     GameTooltip:AddDoubleLine("Estimated:", estimated, 1, 1, 1, 1, 1, 1)
                     GameTooltip:AddDoubleLine("Time to Max:", timeToMaxStr, 1, 1, 1, 1, 1, 1)
                     GameTooltip:AddDoubleLine("Last Saved:", date("%Y-%m-%d %H:%M:%S", entry.lastUpdate), 0.5, 0.5, 0.5, 0.5, 0.5, 0.5)
@@ -581,9 +614,9 @@ function ProfessionTracker:UpdateProfessionsList(container)
         -- Darkmoon Faire
         if not self.db.profile.hiddenColumnsProf["DMF"] then
             local dmfText = "-"
-            if entry.hasDmf then
+            if expData.hasDmf then
                 if isDMF then
-                    local val = entry.dmf and 1 or 0
+                    local val = expData.dmf and 1 or 0
                     dmfText = self:GetColorText(val, 1, "/1")
                     self:AddCol(row, dmfText, colWidths["DMF"], "CENTER")
                 else
@@ -619,6 +652,29 @@ function ProfessionTracker:UpdateSettings(container)
     scroll:SetFullWidth(true)
     scroll:SetFullHeight(true)
     container:AddChild(scroll)
+
+    -- 0. GENERAL SETTINGS (Minimap Icon)
+    local generalGroup = AceGUI:Create("InlineGroup")
+    generalGroup:SetTitle("General Settings")
+    generalGroup:SetLayout("Flow")
+    generalGroup:SetFullWidth(true)
+    scroll:AddChild(generalGroup)
+
+    local minimapCb = AceGUI:Create("CheckBox")
+    minimapCb:SetLabel("Show Minimap Icon")
+    minimapCb:SetValue(not self.db.profile.minimap.hide)
+    minimapCb:SetCallback("OnValueChanged", function(_, _, value)
+        self.db.profile.minimap.hide = not value
+        local icon = LibStub("LibDBIcon-1.0", true)
+        if icon then
+            if value then
+                icon:Show("ProfessionTracker")
+            else
+                icon:Hide("ProfessionTracker")
+            end
+        end
+    end)
+    generalGroup:AddChild(minimapCb)
 
     local headers = {"Name", "Realm", "Weekly Shards", "Owned Shards", "Unalloyed Abundance", "Fused Vit."}
 
@@ -729,7 +785,7 @@ function ProfessionTracker:UpdateSettings(container)
     pDesc:SetFullWidth(true)
     profColumnGroup:AddChild(pDesc)
 
-    local pHeaders = {"Name", "Realm", "Profession", "Moxie", "Skill", "Tool", "Acc.", "Knowledge", "Treatise", "Treasures", "Weekly", "Gathering", "Concentration", "DMF"}
+    local pHeaders = {"Name", "Realm", "Profession", "Expansion", "Moxie", "Skill", "Tool", "Acc.", "Knowledge", "Treatise", "Treasures", "Weekly", "Gathering", "Concentration", "DMF"}
     for _, title in ipairs(pHeaders) do
         local cb = AceGUI:Create("CheckBox")
         cb:SetLabel(title)
@@ -739,6 +795,32 @@ function ProfessionTracker:UpdateSettings(container)
             self.db.profile.hiddenColumnsProf[title] = not value
         end)
         profColumnGroup:AddChild(cb)
+    end
+
+    -- New: Expansion Visibility
+    local expVisibilityGroup = AceGUI:Create("InlineGroup")
+    expVisibilityGroup:SetTitle("Professions: Expansion Visibility")
+    expVisibilityGroup:SetLayout("Flow")
+    expVisibilityGroup:SetFullWidth(true)
+    profMainGroup:AddChild(expVisibilityGroup)
+
+    local expDesc = AceGUI:Create("Label")
+    expDesc.frame:SetScript("OnEnter", nil)
+    expDesc.frame:SetScript("OnLeave", nil)
+    expDesc:SetText("Select which expansions' profession data to display:")
+    expDesc:SetFont(fontPath, 13, "OUTLINE")
+    expDesc:SetFullWidth(true)
+    expVisibilityGroup:AddChild(expDesc)
+
+    for expKey, expName in pairs(ProfessionTracker.Expansions) do
+        local cb = AceGUI:Create("CheckBox")
+        cb:SetLabel(expName)
+        cb:SetWidth(200)
+        cb:SetValue(self.db.profile.activeExpansions[expKey] or false) -- Default to false if not set
+        cb:SetCallback("OnValueChanged", function(_, _, value) 
+            self.db.profile.activeExpansions[expKey] = value 
+        end)
+        expVisibilityGroup:AddChild(cb)
     end
 
     local gatherCharGroup = AceGUI:Create("InlineGroup")

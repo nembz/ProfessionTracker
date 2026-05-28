@@ -1,10 +1,14 @@
 local ProfessionTracker = LibStub("AceAddon-3.0"):GetAddon("ProfessionTracker")
 
 -- Helper to retrieve Knowledge points using hardcoded SkillLineIDs from constants
-local function GetKnowledge(profName)
-    local config = ProfessionTracker.ProfessionData[profName]
+-- Now takes an expansionKey argument to retrieve expansion-specific data
+local function GetKnowledge(profName, expansionKey)
+    local profConfig = ProfessionTracker.ProfessionData[profName]
+    if not profConfig then return {} end -- Return empty if profession not found
+
+    local config = profConfig[expansionKey]
     local res = {
-        spent = 0, unspent = 0, moxie = 0, totalEarned = 0, capacity = 0,
+        spent = 0, unspent = 0, moxie = 0, totalEarned = 0, capacity = 0, -- These are now expansion-specific
         treatiseCompleted = false, hasTreatise = false, treatiseName = "",
         treasuresFound = 0, maxTreasures = 0, treasureStr = "",
         concentration = 0,
@@ -13,7 +17,7 @@ local function GetKnowledge(profName)
         gatheringFound = 0, maxGathering = 0, gatheringStr = ""
     }
 
-    if not config or not config.skillLineID then return res end
+    if not config or not config.skillLineID then return res end -- If no config for this expansion, return empty
     local skillLineID = config.skillLineID
 
     -- Check Treatise Completion
@@ -147,12 +151,13 @@ local function GetKnowledge(profName)
     return res
 end
 
-local function GetEquipmentStatus(profName)
-    local res = { tool = 0, acc = 0, toolName = "", accNames = "" }
-    local names = {}
-    local config = ProfessionTracker.ProfessionData[profName]
-    if not config then return res end
+-- Now takes an expansionKey argument to retrieve expansion-specific data
+local function GetEquipmentStatus(profName, expansionKey)
+    local res = { tool = 0, acc = 0, toolName = "", equippedAccIDs = {} } -- Changed accNames to equippedAccIDs
+    local profConfig = ProfessionTracker.ProfessionData[profName]
+    if not profConfig then return res end
 
+    local config = profConfig[expansionKey]
     -- Helper to get the most reliable Base Item ID from a slot
     local function GetBaseID(slot)
         local itemID = GetInventoryItemID("player", slot)
@@ -177,23 +182,19 @@ local function GetEquipmentStatus(profName)
     -- Check all profession accessory slots (21, 22, 24, 25)
     if config.epicAccessories and #config.epicAccessories > 0 then
         local accessoryMap = {}
-        local accessoryNames = {}
         for _, acc in ipairs(config.epicAccessories) do
             local id = tonumber(acc.id)
             accessoryMap[id] = true
-            accessoryNames[id] = acc.name
         end
 
         for _, slotID in ipairs({21, 22, 24, 25}) do
             local itemID = GetBaseID(slotID)
             if itemID > 0 and accessoryMap[itemID] then
                 res.acc = res.acc + 1
-                table.insert(names, accessoryNames[itemID])
+                table.insert(res.equippedAccIDs, itemID) -- Store the ID of the equipped accessory
             end
         end
     end
-
-    res.accNames = table.concat(names, "\n")
     return res
 end
 
@@ -216,7 +217,7 @@ function ProfessionTracker:UpdatePlayerData()
 
     -- Scan Primary Professions
     local profIndices = { GetProfessions() }
-    local characterData = {
+    local characterData = { -- New structure for characterData
         name = name,
         class = classFileName,
         realm = realm,
@@ -224,33 +225,69 @@ function ProfessionTracker:UpdatePlayerData()
         weeklyShards = weeklyShards,
         abundance = abundance,
         vitality = GetItemCount(245345),
-        lastUpdate = time()
+        lastUpdate = time(),
+        professions = {} -- This will store data for all professions and all expansions
     }
 
     for i = 1, 2 do
         local index = profIndices[i]
-        local prefix = "p" .. i
         if index then
             local pName, _, rank, max = GetProfessionInfo(index)
-            local k = GetKnowledge(pName)
-            local eq = GetEquipmentStatus(pName)
+            characterData.professions[pName] = characterData.professions[pName] or {}
 
-            characterData[prefix.."Name"] = pName
-            characterData[prefix.."Rank"] = rank characterData[prefix.."Max"] = max
-            characterData[prefix.."Spent"] = k.spent characterData[prefix.."Unspent"] = k.unspent
-            characterData[prefix.."Moxie"] = k.moxie characterData[prefix.."Total"] = k.totalEarned
-            characterData[prefix.."MaxK"] = k.capacity characterData[prefix.."Treatise"] = k.treatiseCompleted
-            characterData[prefix.."HasTreatise"] = k.hasTreatise characterData[prefix.."TreatiseName"] = k.treatiseName
-            characterData[prefix.."Treasures"] = k.treasuresFound characterData[prefix.."TreasureDetails"] = k.treasureStr
-            characterData[prefix.."MaxTreasures"] = k.maxTreasures characterData[prefix.."Conc"] = k.concentration
-            characterData[prefix.."Dmf"] = k.dmfCompleted characterData[prefix.."HasDmf"] = k.hasDmf
-            characterData[prefix.."Weekly"] = k.weeklyCompleted characterData[prefix.."HasWeekly"] = k.hasWeekly
-            characterData[prefix.."WeeklyName"] = k.weeklyName characterData[prefix.."Gathering"] = k.gatheringFound
-            characterData[prefix.."MaxGathering"] = k.maxGathering characterData[prefix.."GatheringDetails"] = k.gatheringStr
-            characterData[prefix.."Tool"] = eq.tool characterData[prefix.."Acc"] = eq.acc
-            characterData[prefix.."ToolName"] = eq.toolName characterData[prefix.."AccNames"] = eq.accNames
+            -- Iterate through all defined expansions to collect data
+            for expKey, expName in pairs(ProfessionTracker.Expansions) do
+                local k = GetKnowledge(pName, expKey)
+                local eq = GetEquipmentStatus(pName, expKey)
+
+                -- Store data for this profession and expansion
+                characterData.professions[pName][expKey] = {
+                    name = pName, -- Redundant but useful for UI iteration
+                    expansion = expName, -- Display name of the expansion
+                    rank = rank, -- Current rank is global, not expansion specific, but stored here for simplicity
+                    max = max,   -- Max rank is global, not expansion specific, but stored here for simplicity
+                    spent = k.spent,
+                    unspent = k.unspent,
+                    moxie = k.moxie,
+                    total = k.totalEarned,
+                    maxK = k.capacity,
+                    treatise = k.treatiseCompleted,
+                    hasTreatise = k.hasTreatise,
+                    treatiseName = k.treatiseName,
+                    treasures = k.treasuresFound,
+                    treasureDetails = k.treasureStr,
+                    maxTreasures = k.maxTreasures,
+                    concentration = k.concentration,
+                    dmf = k.dmfCompleted,
+                    hasDmf = k.hasDmf,
+                    weekly = k.weeklyCompleted,
+                    hasWeekly = k.hasWeekly,
+                    weeklyName = k.weeklyName,
+                    gathering = k.gatheringFound,
+                    maxGathering = k.maxGathering,
+                    gatheringDetails = k.gatheringStr,
+                    tool = eq.tool,
+                    acc = eq.acc,
+                    toolName = eq.toolName,
+                    equippedAccIDs = eq.equippedAccIDs, -- Changed this line
+                    accNames = "" -- We no longer use accNames, but keep it for backward compatibility if needed elsewhere
+                }
+            end
         else
-            characterData[prefix.."Name"] = "None"
+            -- If a profession slot is empty, store a placeholder for all expansions
+            -- This ensures that even empty slots can be filtered by expansion if needed
+            for expKey, expName in pairs(ProfessionTracker.Expansions) do
+                characterData.professions["None" .. i] = characterData.professions["None" .. i] or {} -- Use unique key for empty slots
+                characterData.professions["None" .. i][expKey] = {
+                    name = "None",
+                    expansion = expName,
+                    rank = 0, max = 0, spent = 0, unspent = 0, moxie = 0, total = 0, maxK = 0,
+                    treatise = false, hasTreatise = false, weekly = false, hasWeekly = false,
+                    treasures = 0, maxTreasures = 0, gathering = 0, maxGathering = 0,
+                    concentration = 0, dmf = false, hasDmf = false, tool = 0, acc = 0,
+                    equippedAccIDs = {}, -- Ensure this is initialized for empty slots too
+                }
+            end
         end
     end
 

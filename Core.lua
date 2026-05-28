@@ -1,4 +1,5 @@
 local ProfessionTracker = LibStub("AceAddon-3.0"):NewAddon("ProfessionTracker", "AceConsole-3.0", "AceEvent-3.0")
+local icon = LibStub("LibDBIcon-1.0", true)
 
 function ProfessionTracker:OnInitialize()
     local defaults = {
@@ -6,6 +7,9 @@ function ProfessionTracker:OnInitialize()
             characters = {},
             hiddenColumns = {},
             hiddenColumnsProf = {},
+            minimap = {
+                hide = false,
+            },
             hiddenCharacters = {
                 currencies = {},
                 professions = {}
@@ -13,7 +17,10 @@ function ProfessionTracker:OnInitialize()
             sortCol = "Name",
             sortOrder = "asc",
             sortColProf = "Name",
-            sortOrderProf = "asc"
+            sortOrderProf = "asc",
+            activeExpansions = { -- New default setting for expansion visibility
+                ["Midnight"] = true,
+            }
         }
     }
     self.db = LibStub("AceDB-3.0"):New("ProfessionTrackerDB", defaults, true)
@@ -27,6 +34,26 @@ function ProfessionTracker:OnInitialize()
     end)
 
     self:Print("ProfessionTracker Loaded! Type /pt to open.")
+
+    -- Initialize Minimap Icon via DataBroker
+    local LDB = LibStub("LibDataBroker-1.1"):NewDataObject("ProfessionTracker", {
+        type = "launcher",
+        text = "ProfessionTracker",
+        icon = "Interface\\Icons\\Trade_Engineering",
+        OnClick = function(clickedframe, button)
+            if button == "LeftButton" then
+                self:ShowUI()
+            end
+        end,
+        OnTooltipShow = function(tooltip)
+            tooltip:AddLine("ProfessionTracker")
+            tooltip:AddLine("|cffeda55fLeft-Click|r to open the tracker.", 0.2, 1, 0.2)
+        end,
+    })
+
+    if icon then
+        icon:Register("ProfessionTracker", LDB, self.db.profile.minimap)
+    end
 end
 
 function ProfessionTracker:OnEnable()
