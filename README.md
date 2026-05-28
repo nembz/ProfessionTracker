@@ -35,6 +35,9 @@ Never miss a weekly source of Knowledge Points:
 *   **Customizable Visibility:** Fully configurable settings to hide/show specific columns or characters to keep your view clean.
 *   **Class-Colored Names:** Easy identification of character classes at a glance.
 
+## Color Coded
+* Everything is tracked with colors for each milestone reached
+
 ## Usage
 
 *   **/pt**: Open the Profession Tracker main window.
