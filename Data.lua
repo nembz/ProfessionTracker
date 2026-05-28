@@ -1,14 +1,17 @@
 local ProfessionTracker = LibStub("AceAddon-3.0"):GetAddon("ProfessionTracker")
 
+-- Session cache for trait node IDs to avoid expensive re-scanning of tree structures
+local traitNodeCache = {} -- skillLineID -> {nodeID, ...} (stores node IDs for a given skill line)
+
 -- Helper to retrieve Knowledge points using hardcoded SkillLineIDs from constants
 -- Now takes an expansionKey argument to retrieve expansion-specific data
-local function GetKnowledge(profName, expansionKey)
+local function GetKnowledge(profName, expansionKey) -- Main function to get all knowledge-related data
     local profConfig = ProfessionTracker.ProfessionData[profName]
-    if not profConfig then return {} end -- Return empty if profession not found
+    if not profConfig then return {} end
 
     local config = profConfig[expansionKey]
     local res = {
-        spent = 0, unspent = 0, moxie = 0, totalEarned = 0, capacity = 0, -- These are now expansion-specific
+        spent = 0, unspent = 0, moxie = 0, totalEarned = 0, capacity = 0,
         treatiseCompleted = false, hasTreatise = false, treatiseName = "",
         treasuresFound = 0, maxTreasures = 0, treasureStr = "",
         concentration = 0,
@@ -17,17 +20,19 @@ local function GetKnowledge(profName, expansionKey)
         gatheringFound = 0, maxGathering = 0, gatheringStr = ""
     }
 
-    if not config or not config.skillLineID then return res end -- If no config for this expansion, return empty
-    local skillLineID = config.skillLineID
+    if not config or not config.skillLineID then return res end -- Exit early if no config for this expansion
+    local skillLineID = config.skillLineID -- Get the skillLineID once
 
-    -- Check Treatise Completion
+    local function _CheckTreatise(config, res)
     if config.treatise and config.treatise.questId then
         res.hasTreatise = true
         res.treatiseCompleted = C_QuestLog.IsQuestFlaggedCompleted(config.treatise.questId)
         res.treatiseName = config.treatise.itemId and C_Item.GetItemNameByID(config.treatise.itemId) or ""
     end
+    end
+    _CheckTreatise(config, res)
 
-    -- Check Treasures
+    local function _CheckTreasures(config, res)
     local treasureDetails = {}
     res.maxTreasures = (config.treasureMapQuests and #config.treasureMapQuests) or 0
     if config.treasureMapQuests then
@@ -52,23 +57,29 @@ local function GetKnowledge(profName, expansionKey)
             end
         end
     end
-    res.treasureStr = table.concat(treasureDetails, "\n")
+    res.treasureStr = table.concat(treasureDetails, "\n") -- Store formatted treasure details
+    end
+    _CheckTreasures(config, res)
 
-    -- Check Darkmoon Faire
+    local function _CheckDarkmoonFaire(config, res)
     if config.darkmoon and config.darkmoon.questId then
         res.hasDmf = true
         res.dmfCompleted = C_QuestLog.IsQuestFlaggedCompleted(config.darkmoon.questId)
     end
+    end
+    _CheckDarkmoonFaire(config, res)
 
-    -- Check Concentration
+    local function _CheckConcentration(config, res)
     if config.concentration and config.concentration.currencyId and config.concentration.currencyId > 0 then
         local currInfo = C_CurrencyInfo.GetCurrencyInfo(config.concentration.currencyId)
         if currInfo then
             res.concentration = currInfo.quantity or 0
         end
     end
+    end
+    _CheckConcentration(config, res)
 
-    -- 1. Get Unspent Knowledge (using specialized API) and Moxie
+    local function _GetUnspentKnowledgeAndMoxie(skillLineID, config, res)
     local profCurrencyInfo = C_ProfSpecs.GetCurrencyInfoForSkillLine(skillLineID)
     if profCurrencyInfo and profCurrencyInfo.numAvailable then
         res.unspent = profCurrencyInfo.numAvailable
@@ -81,46 +92,51 @@ local function GetKnowledge(profName, expansionKey)
         local moxieInfo = C_CurrencyInfo.GetCurrencyInfo(config.moxieId)
         res.moxie = (moxieInfo and moxieInfo.quantity) or 0
     end
+    end
+    _GetUnspentKnowledgeAndMoxie(skillLineID, config, res)
 
-    -- 2. Get Spent Knowledge (Deep scan of Trait Trees)
-    local configID = C_ProfSpecs.GetConfigIDForSkillLine(skillLineID)
+    local function _GetSpentKnowledge(skillLineID, configID, res)
+    -- Populate node cache if it doesn't exist for this profession
     if configID and configID > 0 then
-        local configInfo = C_Traits.GetConfigInfo(configID)
-        if configInfo and configInfo.treeIDs then
-            local processedNodes = {}
-            for _, treeID in ipairs(configInfo.treeIDs) do
-                local nodes = C_Traits.GetTreeNodes(treeID)
-                if nodes then
-                    for _, nodeID in ipairs(nodes) do
-                        if not processedNodes[nodeID] then
-                            processedNodes[nodeID] = true
-                            local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
-                            if nodeInfo and nodeInfo.maxRanks and nodeInfo.maxRanks > 1 then
-                                -- currentRank 1 is the 'learned' state (0 points). 
-                                -- We only count actual knowledge points invested.
-                                local nodeSpent = math.max(0, (nodeInfo.currentRank or 1) - 1)
-                                local nodeMax = (nodeInfo.maxRanks or 1) - 1
-                                
-                                -- Filter: Only count nodes that have a valid max rank 
-                                -- (this avoids counting system/connector nodes as knowledge)
-                                if nodeMax > 0 then
-                                    res.spent = res.spent + nodeSpent
-                                    res.capacity = res.capacity + nodeMax
-                                end
-                            end
+        -- Populate node cache if it doesn't exist for this profession
+        if not traitNodeCache[skillLineID] then
+            traitNodeCache[skillLineID] = {}
+            local configInfo = C_Traits.GetConfigInfo(configID)
+            if configInfo and configInfo.treeIDs then
+                for _, treeID in ipairs(configInfo.treeIDs) do
+                    local nodes = C_Traits.GetTreeNodes(treeID)
+                    if nodes then
+                        for _, nodeID in ipairs(nodes) do
+                            table.insert(traitNodeCache[skillLineID], nodeID)
                         end
                     end
                 end
             end
         end
-    end
 
-    -- Check Weekly Quest
+        -- Scan cached nodes
+        for _, nodeID in ipairs(traitNodeCache[skillLineID]) do
+            local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
+            if nodeInfo and nodeInfo.maxRanks and nodeInfo.maxRanks > 1 then
+                local nodeSpent = math.max(0, (nodeInfo.currentRank or 1) - 1)
+                local nodeMax = (nodeInfo.maxRanks or 1) - 1
+                if nodeMax > 0 then
+                    res.spent = res.spent + nodeSpent
+                    res.capacity = res.capacity + nodeMax
+                end
+            end
+        end
+    end
+    end
+    _GetSpentKnowledge(skillLineID, C_ProfSpecs.GetConfigIDForSkillLine(skillLineID), res)
+
+    local function _CheckWeeklyQuest(config, res)
     res.weeklyName = config.weekly and config.weekly.name or ""
     if config.weekly and config.weekly.questId then
         res.hasWeekly = true
         if type(config.weekly.questId) == "table" then
             for _, qID in ipairs(config.weekly.questId) do
+                -- Only mark as completed if at least one quest in the table is done
                 if C_QuestLog.IsQuestFlaggedCompleted(qID) then
                     res.weeklyCompleted = true
                     break
@@ -130,8 +146,10 @@ local function GetKnowledge(profName, expansionKey)
             res.weeklyCompleted = C_QuestLog.IsQuestFlaggedCompleted(config.weekly.questId)
         end
     end
+    end
+    _CheckWeeklyQuest(config, res)
 
-    -- Check Gathering Progress
+    local function _CheckGatheringProgress(config, res)
     local gatheringDetails = {}
     res.maxGathering = (config.gathering and config.gathering.questId and #config.gathering.questId) or 0
     if config.gathering and config.gathering.questId then
@@ -146,18 +164,21 @@ local function GetKnowledge(profName, expansionKey)
         end
     end
     res.gatheringStr = table.concat(gatheringDetails, "\n")
-
+    _CheckGatheringProgress(config, res)
+    end
     res.totalEarned = res.spent + res.unspent
     return res
 end
 
--- Now takes an expansionKey argument to retrieve expansion-specific data
+-- Updated to handle expansion specific tools/accessories
 local function GetEquipmentStatus(profName, expansionKey)
-    local res = { tool = 0, acc = 0, toolName = "", equippedAccIDs = {} } -- Changed accNames to equippedAccIDs
+    local res = { tool = 0, acc = 0, toolName = "", equippedAccIDs = {} }
     local profConfig = ProfessionTracker.ProfessionData[profName]
     if not profConfig then return res end
 
     local config = profConfig[expansionKey]
+    if not config then return res end
+
     -- Helper to get the most reliable Base Item ID from a slot
     local function GetBaseID(slot)
         local itemID = GetInventoryItemID("player", slot)
@@ -191,7 +212,7 @@ local function GetEquipmentStatus(profName, expansionKey)
             local itemID = GetBaseID(slotID)
             if itemID > 0 and accessoryMap[itemID] then
                 res.acc = res.acc + 1
-                table.insert(res.equippedAccIDs, itemID) -- Store the ID of the equipped accessory
+                table.insert(res.equippedAccIDs, itemID)
             end
         end
     end
@@ -217,7 +238,7 @@ function ProfessionTracker:UpdatePlayerData()
 
     -- Scan Primary Professions
     local profIndices = { GetProfessions() }
-    local characterData = { -- New structure for characterData
+    local characterData = {
         name = name,
         class = classFileName,
         realm = realm,
@@ -226,67 +247,34 @@ function ProfessionTracker:UpdatePlayerData()
         abundance = abundance,
         vitality = GetItemCount(245345),
         lastUpdate = time(),
-        professions = {} -- This will store data for all professions and all expansions
+        professions = {} -- New structure for multi-expansion storage
     }
 
     for i = 1, 2 do
         local index = profIndices[i]
         if index then
             local pName, _, rank, max = GetProfessionInfo(index)
-            characterData.professions[pName] = characterData.professions[pName] or {}
+            characterData.professions[pName] = {}
 
-            -- Iterate through all defined expansions to collect data
             for expKey, expName in pairs(ProfessionTracker.Expansions) do
                 local k = GetKnowledge(pName, expKey)
                 local eq = GetEquipmentStatus(pName, expKey)
 
-                -- Store data for this profession and expansion
                 characterData.professions[pName][expKey] = {
-                    name = pName, -- Redundant but useful for UI iteration
-                    expansion = expName, -- Display name of the expansion
-                    rank = rank, -- Current rank is global, not expansion specific, but stored here for simplicity
-                    max = max,   -- Max rank is global, not expansion specific, but stored here for simplicity
-                    spent = k.spent,
-                    unspent = k.unspent,
-                    moxie = k.moxie,
-                    total = k.totalEarned,
-                    maxK = k.capacity,
-                    treatise = k.treatiseCompleted,
-                    hasTreatise = k.hasTreatise,
-                    treatiseName = k.treatiseName,
-                    treasures = k.treasuresFound,
-                    treasureDetails = k.treasureStr,
-                    maxTreasures = k.maxTreasures,
-                    concentration = k.concentration,
-                    dmf = k.dmfCompleted,
-                    hasDmf = k.hasDmf,
-                    weekly = k.weeklyCompleted,
-                    hasWeekly = k.hasWeekly,
-                    weeklyName = k.weeklyName,
-                    gathering = k.gatheringFound,
-                    maxGathering = k.maxGathering,
-                    gatheringDetails = k.gatheringStr,
-                    tool = eq.tool,
-                    acc = eq.acc,
-                    toolName = eq.toolName,
-                    equippedAccIDs = eq.equippedAccIDs, -- Changed this line
-                    accNames = "" -- We no longer use accNames, but keep it for backward compatibility if needed elsewhere
+                    spent = k.spent, unspent = k.unspent, moxie = k.moxie, total = k.totalEarned, maxK = k.capacity,
+                    treatise = k.treatiseCompleted, hasTreatise = k.hasTreatise, treatiseName = k.treatiseName,
+                    treasures = k.treasuresFound, treasureDetails = k.treasureStr, maxTreasures = k.maxTreasures,
+                    concentration = k.concentration, dmf = k.dmfCompleted, hasDmf = k.hasDmf,
+                    weekly = k.weeklyCompleted, hasWeekly = k.hasWeekly, weeklyName = k.weeklyName,
+                    gathering = k.gatheringFound, maxGathering = k.maxGathering, gatheringDetails = k.gatheringStr,
+                    tool = eq.tool, acc = eq.acc, toolName = eq.toolName, equippedAccIDs = eq.equippedAccIDs,
+                    rank = rank, max = max
                 }
             end
         else
-            -- If a profession slot is empty, store a placeholder for all expansions
-            -- This ensures that even empty slots can be filtered by expansion if needed
-            for expKey, expName in pairs(ProfessionTracker.Expansions) do
-                characterData.professions["None" .. i] = characterData.professions["None" .. i] or {} -- Use unique key for empty slots
-                characterData.professions["None" .. i][expKey] = {
-                    name = "None",
-                    expansion = expName,
-                    rank = 0, max = 0, spent = 0, unspent = 0, moxie = 0, total = 0, maxK = 0,
-                    treatise = false, hasTreatise = false, weekly = false, hasWeekly = false,
-                    treasures = 0, maxTreasures = 0, gathering = 0, maxGathering = 0,
-                    concentration = 0, dmf = false, hasDmf = false, tool = 0, acc = 0,
-                    equippedAccIDs = {}, -- Ensure this is initialized for empty slots too
-                }
+            for expKey, _ in pairs(ProfessionTracker.Expansions) do
+                characterData.professions["None" .. i] = characterData.professions["None" .. i] or {}
+                characterData.professions["None" .. i][expKey] = { name = "None", rank = 0, max = 0 }
             end
         end
     end

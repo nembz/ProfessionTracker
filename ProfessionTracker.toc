@@ -10,3 +10,6 @@ Utils.lua
 Constants.lua
 Data.lua
 UI.lua
+UI_Currencies.lua
+UI_Professions.lua
+UI_Settings.lua
