@@ -72,7 +72,17 @@ ProfessionTracker.ProfessionData = {
             darkmoon = {questId = 29510},
             concentration = {currencyId = 3163},
             weekly = {questId = {93699, 93698, 93697}, name="Enchanting trainer quest"},
-            gathering = {questId = { 95048, 95049, 95050, 95051, 95052, 95053 }, name="Gathered while disenchanting"},
+            gathering = {
+                questId = {
+                    {questId = 95048, name = "Swirling Arcane Essence"},
+                    {questId = 95049, name = "Swirling Arcane Essence"},
+                    {questId = 95050, name = "Swirling Arcane Essence"},
+                    {questId = 95051, name = "Swirling Arcane Essence"},
+                    {questId = 95052, name = "Swirling Arcane Essence"},
+                    {questId = 95053, name = "Brimming Mana Shard"},
+                },
+                name="Gathered while disenchanting"
+            },
         }
     },
     ["Engineering"] = {
@@ -115,7 +125,17 @@ ProfessionTracker.ProfessionData = {
             darkmoon = {questId = 29514},
             concentration = {},
             weekly = {questId = { 93700, 93701, 93702, 93703, 93704 }, name="Trainer quests"},
-            gathering = {questId = { 81425, 81426, 81427, 81428, 81429, 81430 }, name="Gathered while herbalism"},
+            gathering = {
+                questId = { 
+                    {questId = 81425, name = "Thalassian Phoenix Plume"},
+                    {questId = 81426, name = "Thalassian Phoenix Plume"},
+                    {questId = 81427, name = "Thalassian Phoenix Plume"},
+                    {questId = 81428, name = "Thalassian Phoenix Plume"},
+                    {questId = 81429, name = "Thalassian Phoenix Plume"},
+                    {questId = 81430, name = "Thalassian Phoenix Tail"},
+               },
+                name="Gathered while herbalism"
+            },
         }
     },
     ["Inscription"] = {
@@ -204,7 +224,17 @@ ProfessionTracker.ProfessionData = {
             darkmoon = {questId = 29518},
             concentration = {},
             weekly = {questId = { 93705, 93706, 93707, 93708, 93709 }, name="Trainer quests"},
-            gathering = {questId = { 88673, 88674, 88675, 88676, 88677, 88678 }, name="Gathered while mining"},
+            gathering = {
+                questId = { 
+                    {questId = 88673, name = "Igneous Rock Specimen"},
+                    {questId = 88674, name = "Igneous Rock Specimen"},
+                    {questId = 88675, name = "Igneous Rock Specimen"},
+                    {questId = 88676, name = "Igneous Rock Specimen"},
+                    {questId = 88677, name = "Igneous Rock Specimen"},
+                    {questId = 88678, name = "Septarian Nodule"},
+                },
+                name="Gathered while mining"
+            },
         }
     },
     ["Skinning"] = {
@@ -224,7 +254,17 @@ ProfessionTracker.ProfessionData = {
             darkmoon = {questId = 29519},
             concentration = {},
             weekly = {questId = { 93710, 93711, 93712, 93713, 93714 }, name="Trainer quests"},
-            gathering = {questId = { 88534, 88549, 88536, 88537, 88530, 88529 }, name="Gathered while skinning"},
+            gathering = {
+                questId = { 
+                    {questId = 88534, name = "Fine Void-Tempered Hide"},
+                    {questId = 88549, name = "Fine Void-Tempered Hide"},
+                    {questId = 88536, name = "Fine Void-Tempered Hide"},
+                    {questId = 88537, name = "Fine Void-Tempered Hide"},
+                    {questId = 88530, name = "Fine Void-Tempered Hide"},
+                    {questId = 88529, name = "Mana-Infused Bone"},
+                },
+                name="Gathered while skinning"
+            },
         }
     },
     ["Tailoring"] = {
