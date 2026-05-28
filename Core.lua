@@ -39,7 +39,7 @@ function ProfessionTracker:OnInitialize()
     local LDB = LibStub("LibDataBroker-1.1"):NewDataObject("ProfessionTracker", {
         type = "launcher",
         text = "ProfessionTracker",
-        icon = "Interface\\Icons\\Trade_Engineering",
+        icon = "Interface\\Addons\\ProfessionTracker\\Icons\\Logo.png",
         OnClick = function(clickedframe, button)
             if button == "LeftButton" then
                 self:ShowUI()
@@ -56,14 +56,24 @@ function ProfessionTracker:OnInitialize()
     end
 end
 
+-- Simple throttle to prevent excessive data scanning
+function ProfessionTracker:ThrottledUpdate()
+    if self.updateTimer then return end
+    self.updateTimer = C_Timer.After(2, function()
+        self:UpdatePlayerData()
+        self.updateTimer = nil
+    end)
+end
+
 function ProfessionTracker:OnEnable()
     -- Update data when the player is fully logged in
     self:UpdatePlayerData()
-    self:RegisterEvent("QUEST_TURNED_IN", "UpdatePlayerData")
-    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "UpdatePlayerData")
-    self:RegisterEvent("BAG_UPDATE_DELAYED", "UpdatePlayerData")
-    self:RegisterEvent("LOOT_CLOSED", "UpdatePlayerData")
-    self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", "UpdatePlayerData")
+    -- Use throttled update for high-frequency events
+    self:RegisterEvent("QUEST_TURNED_IN", "ThrottledUpdate")
+    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "ThrottledUpdate")
+    self:RegisterEvent("BAG_UPDATE_DELAYED", "ThrottledUpdate")
+    self:RegisterEvent("LOOT_CLOSED", "ThrottledUpdate")
+    self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", "ThrottledUpdate")
 end
 
 function ProfessionTracker:ResetData()

@@ -270,7 +270,7 @@ function ProfessionTracker:UpdateProfessionsList(container)
         ["Name"] = "name",
         ["Realm"] = "realm",
         ["Profession"] = "profName",
-        ["Expansion"] = "expansionName", -- New sortable column
+        ["Expansion"] = "expansionName",
         ["Moxie"] = "moxie",
         ["Skill"] = "rank",
         ["Tool"] = "tool",
@@ -330,7 +330,7 @@ function ProfessionTracker:UpdateProfessionsList(container)
         label:SetText(headerText)
             label:SetWidth(colWidths[title])
         if label.label then label.label:SetWordWrap(false) end
-        if i > 3 then
+        if title ~= "Name" and title ~= "Realm" and title ~= "Profession" then
             label:SetJustifyH("CENTER")
         end
         local fontPath, _, fontFlags = GameFontHighlight:GetFont()
@@ -429,7 +429,7 @@ function ProfessionTracker:UpdateProfessionsList(container)
                         GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
                         GameTooltip:SetText("|cffffd100Profession Tool|r")
                         GameTooltip:AddLine(" ")
-                        local status = isEquipped and "|cff00ff00[Equipped]|r" or "|cffff8080[Not Equipped]|r"
+                        local status = isEquipped and "|cff00ff00[Equipped]|r" or "|cff808080[Not Equipped]|r"
                         GameTooltip:AddLine(string.format("%s %s", status, "|cffa335ee" .. toolName .. "|r"))
                         GameTooltip:Show()
                     end)
@@ -461,7 +461,7 @@ function ProfessionTracker:UpdateProfessionsList(container)
                         end
                         for _, accDef in ipairs(currentExpProfConfig.epicAccessories) do
                             local isEquipped = equippedAccIDsMap[accDef.id]
-                            local status = isEquipped and "|cff00ff00[Equipped]|r" or "|cffff8080[Not Equipped]|r"
+                            local status = isEquipped and "|cff00ff00[Equipped]|r" or "|cff808080[Not Equipped]|r"
                             GameTooltip:AddLine(string.format("%s %s", status, "|cffa335ee" .. accDef.name .. "|r"))
                         end
                         GameTooltip:Show()
