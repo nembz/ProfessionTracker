@@ -153,9 +153,20 @@ local function GetKnowledge(profName, expansionKey) -- Main function to get all 
     local gatheringDetails = {}
     res.maxGathering = (config.gathering and config.gathering.questId and #config.gathering.questId) or 0
     if config.gathering and config.gathering.questId then
-        for i, qID in ipairs(config.gathering.questId) do
+        for i, entry in ipairs(config.gathering.questId) do
+            local qID, title
+            if type(entry) == "table" then
+                qID = entry.questId
+                title = entry.name
+            else
+                qID = entry
+            end
+
             local completed = C_QuestLog.IsQuestFlaggedCompleted(qID)
-            local title = C_QuestLog.GetTitleForQuestID(qID) or ("Item #" .. i)
+            if not title or title == "" then
+                title = C_QuestLog.GetTitleForQuestID(qID) or ("Item #" .. i)
+            end
+
             local status = completed and "|cff00ff00[Done]|r" or "|cffff0000[Missing]|r"
             table.insert(gatheringDetails, string.format("%s |cffa335ee%s|r", status, title))
             if completed then
@@ -164,8 +175,8 @@ local function GetKnowledge(profName, expansionKey) -- Main function to get all 
         end
     end
     res.gatheringStr = table.concat(gatheringDetails, "\n")
-    _CheckGatheringProgress(config, res)
     end
+    _CheckGatheringProgress(config, res)
     res.totalEarned = res.spent + res.unspent
     return res
 end
