@@ -20,7 +20,8 @@ function ProfessionTracker:OnInitialize()
             sortOrderProf = "asc",
             activeExpansions = { -- New default setting for expansion visibility
                 ["Midnight"] = true,
-            }
+            },
+            defaultTab = "currencies",
         }
     }
     self.db = LibStub("AceDB-3.0"):New("ProfessionTrackerDB", defaults, true)

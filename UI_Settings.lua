@@ -11,6 +11,26 @@ function ProfessionTracker:UpdateSettings(container)
     scroll:SetFullHeight(true)
     container:AddChild(scroll)
 
+    -- 0. STARTUP SETTINGS
+    local startupGroup = AceGUI:Create("InlineGroup")
+    startupGroup:SetTitle("Startup Settings")
+    startupGroup:SetLayout("Flow")
+    startupGroup:SetFullWidth(true)
+    scroll:AddChild(startupGroup)
+
+    local tabDropdown = AceGUI:Create("Dropdown")
+    tabDropdown:SetLabel("Default Tab on Open")
+    tabDropdown:SetList({
+        ["currencies"] = "Currencies",
+        ["professions"] = "Professions"
+    })
+    tabDropdown:SetWidth(200)
+    tabDropdown:SetValue(self.db.profile.defaultTab or "currencies")
+    tabDropdown:SetCallback("OnValueChanged", function(_, _, value)
+        self.db.profile.defaultTab = value
+    end)
+    startupGroup:AddChild(tabDropdown)
+
     -- 0. GENERAL SETTINGS
     local generalGroup = AceGUI:Create("InlineGroup")
     generalGroup:SetTitle("General Settings")
