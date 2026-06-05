@@ -10,6 +10,16 @@ function ProfessionTracker:ShowUI()
     frame:SetHeight(600)
     frame:SetCallback("OnClose", function(widget) AceGUI:Release(widget) end)
     
+    -- Allow closing the window with the Escape key
+    _G["ProfessionTrackerMainFrame"] = frame.frame
+    local isRegistered = false
+    for _, name in ipairs(UISpecialFrames) do
+        if name == "ProfessionTrackerMainFrame" then isRegistered = true; break end
+    end
+    if not isRegistered then
+        table.insert(UISpecialFrames, "ProfessionTrackerMainFrame")
+    end
+
     local tabGroup = AceGUI:Create("TabGroup")
     tabGroup:SetLayout("Fill")
     tabGroup:SetTabs({
@@ -41,5 +51,5 @@ function ProfessionTracker:ShowUI()
     end)
     
     frame:AddChild(tabGroup)
-    tabGroup:SelectTab("currencies")
+    tabGroup:SelectTab(self.db.profile.defaultTab or "currencies")
 end
