@@ -128,6 +128,17 @@ function ProfessionTracker:UpdateCharacterList(container)
             row.bg:Hide()
         end
 
+        -- Hover Highlight
+        row.frame:EnableMouse(true)
+        if not row.highlight then
+            row.highlight = row.frame:CreateTexture(nil, "BACKGROUND", nil, 1)
+            row.highlight:SetAllPoints()
+            row.highlight:SetColorTexture(1, 1, 1, 0.08)
+            row.highlight:Hide()
+        end
+        row.frame:SetScript("OnEnter", function() row.highlight:Show() end)
+        row.frame:SetScript("OnLeave", function() row.highlight:Hide() end)
+
         if not self.db.profile.hiddenColumns["Name"] then
             local displayName = self:GetClassColoredName(data.name or charKey, data.class)
             self:AddCol(row, displayName, colWidths["Name"])

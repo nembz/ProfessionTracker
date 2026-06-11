@@ -1,7 +1,8 @@
 ## Interface: 120000
-## Title: ProTracker
+## Title: ProfessionTracker
 ## Notes: Modern tracking for your professions.
 ## SavedVariables: ProfessionTrackerDB
+## Category: Professions
 ## OptionalDeps: Ace3
 
 embeds.xml
